@@ -1,0 +1,87 @@
+#!/usr/bin/env python3
+
+import argparse
+import io
+import os
+import sys
+import urllib.request
+import xml.etree.ElementTree
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        prog="drip", description="A slow trickle podcast republisher"
+    )
+
+    parser.add_argument("-o", required=True, help="output filename")
+    parser.add_argument("-i", required=True, help="input feed url")
+    parser.add_argument("-n", type=int, default=1, help="number of items to republish")
+    args = parser.parse_args()
+
+    feed = fetch(args.i)
+    src = xml.etree.ElementTree.parse(io.BytesIO(feed))
+
+    if os.path.exists(args.o):
+        dst = xml.etree.ElementTree.parse(args.o)
+    else:
+        dst = None
+
+    dst = drip(dst, src, args.n)
+    dst.write(args.o, xml_declaration=True)
+
+
+# drip emits `num` more items from src to dst. It's destructive to the
+# in-memory representation of src.
+def drip(dst, src, num):
+    tag = src.getroot().tag
+    if tag == "rss":
+        return drip_rss(dst, src, num)
+
+    raise Exception("unrecognized feed root: %s" % tag)
+
+
+def drip_rss(dst, src, num):
+    channel = src.find("channel")
+
+    srcitems = channel.findall("item")
+    if dst is not None:
+        dstlatest = dst.find("channel").find("item")
+        srcitems = newitems_rss(dstlatest, srcitems)
+
+    if len(srcitems) > num:
+        for item in srcitems[0 : len(srcitems) - num]:
+            channel.remove(item)
+
+    sys.stderr.write("Writing %d episodes\n" % len(src.findall("channel/item")))
+
+    return src
+
+
+def newitems_rss(dstlatest, srcitems):
+    def episode_key(item):
+        tag = item.find("guid")
+        if tag is not None:
+            return tag.text
+
+        tag = item.find("enclosure")
+        return tag.get("url")
+
+    key = episode_key(dstlatest)
+    for i, item in enumerate(srcitems):
+        if episode_key(item) == key:
+            return srcitems[:i]
+
+    return srcitems
+
+
+def fetch(url):
+    req = urllib.request.Request(url)
+    req.add_header("Accept", "application/rss+xml")
+    req.add_header("User-Agent", "drip/1.0")
+
+    resp = urllib.request.urlopen(req)
+    return resp.read()
+
+
+if __name__ == "__main__":
+    main()
