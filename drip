@@ -35,18 +35,18 @@ def main():
 def drip(dst, src, num):
     tag = src.getroot().tag
     if tag == "rss":
-        return drip_rss(dst, src, num)
+        return rss_drip(dst, src, num)
 
     raise Exception("unrecognized feed root: %s" % tag)
 
 
-def drip_rss(dst, src, num):
+def rss_drip(dst, src, num):
     channel = src.find("channel")
 
     srcitems = channel.findall("item")
     if dst is not None:
         dstlatest = dst.find("channel").find("item")
-        srcitems = newitems_rss(dstlatest, srcitems)
+        srcitems = rss_newitems(dstlatest, srcitems)
 
     if len(srcitems) > num:
         for item in srcitems[0 : len(srcitems) - num]:
@@ -57,7 +57,7 @@ def drip_rss(dst, src, num):
     return src
 
 
-def newitems_rss(dstlatest, srcitems):
+def rss_newitems(dstlatest, srcitems):
     def episode_key(item):
         tag = item.find("guid")
         if tag is not None:
