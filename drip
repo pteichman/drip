@@ -44,6 +44,7 @@ def drip(dst, src, num):
 
 
 def rss_drip(dst, src, num):
+    numsrc = rss_numitems(src)
     channel = src.find("channel")
 
     srcitems = channel.findall("item")
@@ -55,7 +56,10 @@ def rss_drip(dst, src, num):
         for item in srcitems[0 : len(srcitems) - num]:
             channel.remove(item)
 
-    sys.stderr.write("Writing %d episodes\n" % len(src.findall("channel/item")))
+    numdst = rss_numitems(src)
+
+    pct = (float(numdst) / float(numsrc)) * 100
+    sys.stderr.write("Writing %d episodes (%.0f%%)\n" % (numdst, pct))
 
     return src
 
@@ -75,6 +79,10 @@ def rss_newitems(dstlatest, srcitems):
             return srcitems[:i]
 
     return srcitems
+
+
+def rss_numitems(feed):
+    return len(feed.findall("channel/item"))
 
 
 def fetch(url):
