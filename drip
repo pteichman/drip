@@ -45,8 +45,6 @@ def main():
     src_count = rss_numitems(src)
     dst_count = rss_numitems(dst)
 
-    print("src_count=%d dst_count=%d" % (src_count, dst_count))
-
     dst_title = dst.find("channel/title")
     dst_title.text = "[drip %0.2f%%] %s" % (
         100 * float(dst_count) / src_count,
