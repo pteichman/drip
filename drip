@@ -49,7 +49,7 @@ def main():
 
     dst_title = dst.find("channel/title")
     dst_title.text = "[drip %0.2f%%] %s" % (
-        float(dst_count) / src_count,
+        100 * float(dst_count) / src_count,
         dst_title.text,
     )
 
