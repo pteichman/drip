@@ -8,6 +8,9 @@ import sys
 import urllib.request
 import xml.etree.ElementTree
 
+# This only supports RSS 2.0 feeds. So far, I have been able to find one of
+# those (vs Atom or earlier RSS) for everything I've wanted to drip.
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -22,63 +25,54 @@ def main():
     feed = fetch(args.i)
     src = xml.etree.ElementTree.parse(io.BytesIO(feed))
 
+    latest_seen = None
     if os.path.exists(args.o):
-        dst = xml.etree.ElementTree.parse(args.o)
-    else:
-        dst = None
+        seen = xml.etree.ElementTree.parse(args.o)
+        latest_item = seen.find("channel/item")
+        if latest_item is not None:
+            latest_seen = rss_item_key(latest_item)
 
-    dst = drip(dst, src, args.n)
+    src_index = find_index(src, latest_seen)
+    dst_skips = max(0, src_index - args.n)
+
+    # drip `args.n` more items than we'd already seen into `dst`.
+    dst = xml.etree.ElementTree.parse(io.BytesIO(feed))
+    dst_channel = dst.find("channel")
+    for _ in range(dst_skips):
+        dst_channel.remove(dst_channel.find("item"))
+
+    # update the feed title to reflect the number of items published.
+    src_count = rss_numitems(src)
+    dst_count = rss_numitems(dst)
+
+    print("src_count=%d dst_count=%d" % (src_count, dst_count))
+
+    dst_title = dst.find("channel/title")
+    dst_title.text = "[drip %0.2f%%] %s" % (
+        float(dst_count) / src_count,
+        dst_title.text,
+    )
+
     dst.write(args.o, xml_declaration=True)
 
 
-# drip emits `num` more items from src to dst.
-def drip(dst, src, num):
-    src = copy.deepcopy(src)
-    dst = copy.deepcopy(dst)
-
-    tag = src.getroot().tag
-    if tag == "rss":
-        return rss_drip(dst, src, num)
-
-    raise Exception("unrecognized feed root: %s" % tag)
+# find_index returns the index of the item with `key` in feed, or the index
+# after the last item if not found.
+def find_index(feed, key):
+    items = feed.findall("channel/item")
+    for i, item in enumerate(items):
+        if rss_item_key(item) == key:
+            return i
+    return len(items)
 
 
-def rss_drip(dst, src, num):
-    numsrc = rss_numitems(src)
-    channel = src.find("channel")
+def rss_item_key(item):
+    tag = item.find("guid")
+    if tag is not None:
+        return tag.text
 
-    srcitems = channel.findall("item")
-    if dst is not None:
-        dstlatest = dst.find("channel").find("item")
-        srcitems = rss_newitems(dstlatest, srcitems)
-
-    if len(srcitems) > num:
-        for item in srcitems[0 : len(srcitems) - num]:
-            channel.remove(item)
-
-    numdst = rss_numitems(src)
-
-    pct = (float(numdst) / float(numsrc)) * 100
-    sys.stderr.write("Writing %d episodes (%.0f%%)\n" % (numdst, pct))
-
-    return src
-
-
-def rss_newitems(dstlatest, srcitems):
-    def episode_key(item):
-        tag = item.find("guid")
-        if tag is not None:
-            return tag.text
-
-        tag = item.find("enclosure")
-        return tag.get("url")
-
-    key = episode_key(dstlatest)
-    for i, item in enumerate(srcitems):
-        if episode_key(item) == key:
-            return srcitems[:i]
-
-    return srcitems
+    tag = item.find("enclosure")
+    return tag.get("url")
 
 
 def rss_numitems(feed):
